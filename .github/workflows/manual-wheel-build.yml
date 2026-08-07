@@ -44,6 +44,17 @@ jobs:
       - name: Limit Cargo build jobs on GitHub-hosted runners
         run: echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
 
+      - name: Lighten the release LTO/codegen settings for this 2-core runner
+        # The workspace's `release` profile uses lto=fat + codegen-units=1,
+        # which single-threads the final nautilus-pyo3 link across the whole
+        # dependency graph. On a 2-core/~7GB GitHub-hosted runner that step
+        # runs long enough to get killed. Thin LTO with more codegen units
+        # parallelizes codegen within rustc and finishes reliably, at a small
+        # runtime-performance cost versus a true release build.
+        run: |
+          echo "CARGO_PROFILE_RELEASE_LTO=thin" >> "$GITHUB_ENV"
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16" >> "$GITHUB_ENV"
+
       - name: Build wheel
         working-directory: ${{ env.PACKAGE_DIR }}
         run: |
