@@ -1,0 +1,60 @@
+name: manual-wheel-build
+
+# One-off manual wheel build for consumers who need a prebuilt release-profile
+# wheel without recompiling locally. Runs on GitHub-hosted ubuntu-22.04
+# (unlike the main `build` workflow's `build` job, which targets self-hosted
+# runners for push events) and uploads the wheel as a downloadable artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      python-version:
+        description: Python version to build the wheel for
+        required: false
+        default: "3.13"
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_DIR: python
+
+jobs:
+  build-wheel:
+    name: build wheel - python ${{ github.event.inputs.python-version }} (ubuntu-22.04)
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      MATURIN_PROFILE: release
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Common setup
+        uses: ./.github/actions/common-setup
+        with:
+          python-version: ${{ github.event.inputs.python-version }}
+          free-disk-space: "true"
+          free-disk-space-max-build: "true"
+          rust-cache-enabled: "false"
+
+      - name: Limit Cargo build jobs on GitHub-hosted runners
+        run: echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+
+      - name: Build wheel
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          MATURIN_VERSION="$(bash ../scripts/maturin-version.bash)"
+          uv run --no-project --no-build --with "maturin==${MATURIN_VERSION}" -- \
+            maturin build --profile "$MATURIN_PROFILE" --out ../dist
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nautilus-trader-wheel-py${{ github.event.inputs.python-version }}
+          path: dist/nautilus_trader-*.whl
+          if-no-files-found: error
+          retention-days: 7
